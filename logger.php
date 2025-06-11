@@ -1,58 +1,51 @@
 <?php
-date_default_timezone_set('Asia/Kolkata');
+date_default_timezone_set("Asia/Kolkata");
 
+// Get visitor IP address
 $ip = $_SERVER['REMOTE_ADDR'];
-$details = json_decode(file_get_contents("http://ip-api.com/json/$ip?fields=status,country,regionName,city,district,zip,lat,lon,isp,query"), true);
 
-if ($details['status'] !== 'success') {
-    $details = [
-        'country' => 'Unknown',
-        'regionName' => 'Unknown',
-        'city' => 'Unknown',
-        'district' => 'Unknown',
-        'zip' => 'Unknown',
-        'lat' => '0.0',
-        'lon' => '0.0',
-        'isp' => 'Unknown',
-        'query' => $ip
-    ];
+// Get geolocation data
+$geo = json_decode(file_get_contents("http://ip-api.com/json/$ip?fields=status,country,regionName,city,lat,lon,query"), true);
+
+if ($geo && $geo['status'] === 'success') {
+    $country = $geo['country'];
+    $region = $geo['regionName'];
+    $city = $geo['city'];
+    $lat = $geo['lat'];
+    $lon = $geo['lon'];
+} else {
+    $country = $region = $city = $lat = $lon = "Unknown";
 }
 
-$log = "IP: " . $ip . " | Country: " . $details['country'] . " | Region: " . $details['regionName'] .
-       " | City: " . $details['city'] . " | District: " . $details['district'] .
-       " | ZIP: " . $details['zip'] . " | Lat: " . $details['lat'] . " | Lon: " . $details['lon'] .
-       " | ISP: " . $details['isp'] . " | Time: " . date("d-m-Y H:i:s") . "\n";
+// Time
+$time = date("Y-m-d H:i:s");
 
-file_put_contents("log.txt", $log, FILE_APPEND);
-
-$db = new SQLite3("log.db");
-$db->exec("CREATE TABLE IF NOT EXISTS logs (
+// Save to SQLite
+$db = new SQLite3('log.db');
+$db->exec("CREATE TABLE IF NOT EXISTS visitors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ip TEXT,
     country TEXT,
     region TEXT,
     city TEXT,
-    zip TEXT,
     lat TEXT,
     lon TEXT,
-    isp TEXT,
     time TEXT
 )");
 
-$stmt = $db->prepare("INSERT INTO logs (ip, country, region, city, zip, lat, lon, isp, time)
-                      VALUES (:ip, :country, :region, :city, :zip, :lat, :lon, :isp, :time)");
-
-$stmt->bindValue(':ip', $ip);
-$stmt->bindValue(':country', $details['country']);
-$stmt->bindValue(':region', $details['regionName']);
-$stmt->bindValue(':city', $details['city']);
-$stmt->bindValue(':zip', $details['zip']);
-$stmt->bindValue(':lat', $details['lat']);
-$stmt->bindValue(':lon', $details['lon']);
-$stmt->bindValue(':isp', $details['isp']);
-$stmt->bindValue(':time', date("d-m-Y H:i:s"));
-
+$stmt = $db->prepare("INSERT INTO visitors (ip, country, region, city, lat, lon, time) VALUES (?, ?, ?, ?, ?, ?, ?)");
+$stmt->bindValue(1, $ip);
+$stmt->bindValue(2, $country);
+$stmt->bindValue(3, $region);
+$stmt->bindValue(4, $city);
+$stmt->bindValue(5, $lat);
+$stmt->bindValue(6, $lon);
+$stmt->bindValue(7, $time);
 $stmt->execute();
+
+// Also write to log.txt
+$log = "IP: $ip | Country: $country | Region: $region | City: $city | Lat: $lat | Lon: $lon | Time: $time\n";
+file_put_contents("log.txt", $log, FILE_APPEND);
 
 echo "📍 Visitor tracked successfully.";
 ?>
