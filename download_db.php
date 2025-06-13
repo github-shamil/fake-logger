@@ -1,12 +1,13 @@
 <?php
-$filename = 'log.db';
-if (file_exists($filename)) {
+$file = 'log.db';
+
+if (file_exists($file)) {
     header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
-    header('Content-Length: ' . filesize($filename));
-    readfile($filename);
+    header('Content-Disposition: attachment; filename="log.db"');
+    header('Content-Length: ' . filesize($file));
+    readfile($file);
     exit;
 } else {
-    echo "Database not found.";
+    echo "Database file not found.";
 }
 ?>
