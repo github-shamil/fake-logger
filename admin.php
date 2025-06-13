@@ -11,11 +11,6 @@ $TELEGRAM_BOT_TOKEN = "7943375930:AAEiifo4A9NiuxY13o73qjCJVUiHXEu2ta8";
 $TELEGRAM_CHAT_ID = "6602027873";
 
 //===========================
-// 2FA CHECK (future use)
-//===========================
-// Here you can integrate Google Authenticator via PHPGang or similar libraries
-
-//===========================
 // LOGIN SYSTEM
 //===========================
 if (!isset($_SESSION['logged_in'])) {
@@ -41,10 +36,22 @@ if (isset($_GET['logout'])) {
 }
 
 //===========================
-// DELETE LOG ENTRIES
+// SQLite Setup
 //===========================
 $db = new SQLite3('log.db');
+$db->exec("CREATE TABLE IF NOT EXISTS logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT,
+    latitude REAL,
+    longitude REAL,
+    city TEXT,
+    country TEXT,
+    timestamp TEXT
+)");
 
+//===========================
+// DELETE LOGS
+//===========================
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
     $db->exec("DELETE FROM logs WHERE id = $id");
@@ -59,12 +66,11 @@ if (isset($_GET['delete_all'])) {
     exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Admin Panel - Visitor Logs</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -99,7 +105,8 @@ if (isset($_GET['delete_all'])) {
     $results = $db->query("SELECT * FROM logs ORDER BY id DESC");
     $countries = [];
     while ($row = $results->fetchArray(SQLITE3_ASSOC)) {
-      $countries[$row['country']] = ($countries[$row['country']] ?? 0) + 1;
+      $country = $row['country'] ?: 'Unknown';
+      $countries[$country] = ($countries[$country] ?? 0) + 1;
       echo "<tr>
         <td>{$row['id']}</td>
         <td>{$row['ip']}</td>
