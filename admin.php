@@ -2,7 +2,6 @@
 session_start();
 $PASSWORD = "8590";
 
-// Login system
 if (!isset($_SESSION['logged_in'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_POST['password'] === $PASSWORD) {
         $_SESSION['logged_in'] = true;
@@ -16,7 +15,6 @@ if (!isset($_SESSION['logged_in'])) {
     }
 }
 
-// Logout
 if (isset($_GET['logout'])) {
     session_destroy();
     header("Location: admin.php");
@@ -28,42 +26,155 @@ if (isset($_GET['logout'])) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Admin Panel - Tracker Logs</title>
+  <title>Admin Panel - Visitor Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans&display=swap" rel="stylesheet">
   <style>
-    body { font-family: "Segoe UI", sans-serif; background: #111; color: #eee; margin: 0; padding: 20px; }
-    h1 { color: #0f0; }
-    button, a { padding: 8px 14px; margin: 5px; border: none; cursor: pointer; background: #222; color: #0f0; border-radius: 5px; }
-    button:hover, a:hover { background: #0f0; color: #000; }
-    pre { background: #222; padding: 10px; border-radius: 5px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
-    canvas { max-width: 500px; margin-top: 20px; background: #fff; border-radius: 10px; }
-    .topbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
-    .dark-toggle { float: right; cursor: pointer; }
+    body {
+      font-family: 'Google Sans', sans-serif;
+      background: #121212;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+    }
+    h1, h2 {
+      margin-bottom: 10px;
+      color: #00ff99;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .actions a, button {
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      background: #1e1e2e;
+      color: #00ff99;
+      border: none;
+      margin: 5px;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+    .actions a:hover, button:hover {
+      background: #00ff99;
+      color: #000;
+    }
+    pre {
+      background: #1e1e2e;
+      padding: 12px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    canvas {
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px;
+      max-width: 100%;
+    }
+    .stats {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      background: #222;
+      padding: 16px;
+      border-radius: 8px;
+      flex: 1;
+      min-width: 150px;
+      box-shadow: 0 0 5px rgba(0,255,170,0.2);
+    }
+    .stat-card h3 {
+      margin: 0;
+      font-size: 18px;
+      color: #00ffc8;
+    }
+    .stat-card span {
+      font-size: 24px;
+      font-weight: bold;
+      display: block;
+      margin-top: 5px;
+    }
+    .admin-buttons {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0 20px;
+      flex-wrap: wrap;
+    }
+    .admin-buttons a {
+      background: #1e1e2e;
+      padding: 10px 14px;
+      border-radius: 8px;
+      color: #00ff99;
+      font-weight: 600;
+      text-decoration: none;
+      transition: 0.2s;
+    }
+    .admin-buttons a:hover {
+      background: #00ff99;
+      color: #000;
+    }
   </style>
 </head>
 <body>
+
   <div class="topbar">
-    <h1>📋 Visitor Logs</h1>
-    <a href="?logout=1">Logout</a>
-    <a href="export_csv.php">📥 Export CSV</a>
-    <a href="export_json.php">📥 Export JSON</a>
-    <a href="download_db.php">📥 Download DB</a>
-    <button onclick="toggleDarkMode()">🌓 Toggle Mode</button>
+    <h1>📊 Tracker Admin Dashboard</h1>
+    <div class="actions">
+      <a href="?logout=1">🚪 Logout</a>
+      <a href="export_csv.php">📥 CSV</a>
+      <a href="export_json.php">📦 JSON</a>
+      <a href="download_db.php">💾 DB</a>
+      <button onclick="toggleDarkMode()">🌓 Toggle Mode</button>
+    </div>
   </div>
 
-  <canvas id="countryChart"></canvas>
+  <div class="stats" id="statsPanel">
+    <div class="stat-card"><h3>Total Logs</h3><span id="totalLogs">0</span></div>
+    <div class="stat-card"><h3>Unique Countries</h3><span id="uniqueCountries">0</span></div>
+    <div class="stat-card"><h3>Live Visitors</h3><span>👁️ Updating</span></div>
+  </div>
 
-  <h2>Latest Visitors</h2>
-  <pre id="logContent">Loading...</pre>
+  <canvas id="countryChart" height="140"></canvas>
+
+  <h2>📄 Recent Logs</h2>
+
+  <div class="admin-buttons">
+    <a href="export_json.php" target="_blank" class="btn-json">📦 Download JSON</a>
+    <a href="export_csv.php" target="_blank" class="btn-csv">🧾 Download CSV</a>
+    <a href="download_db.php" target="_blank" class="btn-db">💾 Download DB</a>
+  </div>
+
+  <pre id="logContent">Loading logs...</pre>
 
   <script>
     function fetchLog() {
       fetch('log.txt')
         .then(res => res.text())
         .then(data => {
-          document.getElementById('logContent').innerText = data || "No logs yet.";
+          document.getElementById('logContent').innerText = data || "No logs found.";
+          updateStats(data);
           renderChart(data);
         });
+    }
+
+    function updateStats(log) {
+      const lines = log.trim().split('\n').filter(line => line.trim() !== "");
+      document.getElementById("totalLogs").textContent = lines.length;
+
+      const countrySet = new Set();
+      lines.forEach(line => {
+        const match = line.match(/Country:\s(\w+)/);
+        if (match) countrySet.add(match[1]);
+      });
+      document.getElementById("uniqueCountries").textContent = countrySet.size;
     }
 
     function renderChart(log) {
@@ -83,25 +194,27 @@ if (isset($_GET['logout'])) {
         data: {
           labels: Object.keys(countries),
           datasets: [{
-            label: '# of Visits',
+            label: 'Country Logs',
             data: Object.values(countries),
-            backgroundColor: '#0f0'
+            backgroundColor: '#00ff99'
           }]
         },
         options: {
-          plugins: { legend: { display: false }},
+          plugins: { legend: { display: false } },
           scales: { y: { beginAtZero: true } }
         }
       });
     }
 
     function toggleDarkMode() {
-      document.body.style.background = document.body.style.background === "white" ? "#111" : "white";
-      document.body.style.color = document.body.style.color === "black" ? "#eee" : "black";
+      const bg = document.body.style.background;
+      document.body.style.background = (bg === "white") ? "#121212" : "white";
+      document.body.style.color = (bg === "white") ? "#000" : "#fff";
     }
 
     fetchLog();
-    setInterval(fetchLog, 30000); // refresh every 30s
+    setInterval(fetchLog, 30000); // auto-refresh every 30s
   </script>
+
 </body>
 </html>
