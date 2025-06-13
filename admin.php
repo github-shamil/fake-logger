@@ -1,168 +1,107 @@
 <?php
 session_start();
+$PASSWORD = "8590";
 
-// Password protection
-$correct_password = '8590';
-if (isset($_POST['password'])) {
-    if ($_POST['password'] === $correct_password) {
-        $_SESSION['admin_logged_in'] = true;
+// Login system
+if (!isset($_SESSION['logged_in'])) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_POST['password'] === $PASSWORD) {
+        $_SESSION['logged_in'] = true;
     } else {
-        $error = "Incorrect password!";
+        echo '<form method="post" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <h2>Admin Access</h2>
+                <input type="password" name="password" placeholder="Enter Password" style="padding:10px;width:200px;" />
+                <button style="margin-top:10px;padding:10px 20px;">Login</button>
+              </form>';
+        exit();
     }
 }
 
-if (!isset($_SESSION['admin_logged_in'])):
+// Logout
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: admin.php");
+    exit();
+}
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Admin Login</title>
-    <style>
-        body {
-            background: #121212;
-            color: white;
-            font-family: 'Segoe UI', sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .login-box {
-            background: #1e1e1e;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 20px #000;
-        }
-        input[type="password"] {
-            padding: 10px;
-            width: 100%;
-            font-size: 16px;
-            border: none;
-            border-radius: 5px;
-            margin-top: 10px;
-        }
-        button {
-            margin-top: 15px;
-            padding: 10px 20px;
-            font-size: 16px;
-            background: #03DAC6;
-            color: black;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .error {
-            color: red;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel - Tracker Logs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; background: #111; color: #eee; margin: 0; padding: 20px; }
+    h1 { color: #0f0; }
+    button, a { padding: 8px 14px; margin: 5px; border: none; cursor: pointer; background: #222; color: #0f0; border-radius: 5px; }
+    button:hover, a:hover { background: #0f0; color: #000; }
+    pre { background: #222; padding: 10px; border-radius: 5px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    canvas { max-width: 500px; margin-top: 20px; background: #fff; border-radius: 10px; }
+    .topbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
+    .dark-toggle { float: right; cursor: pointer; }
+  </style>
 </head>
 <body>
-    <div class="login-box">
-        <h2>Admin Login</h2>
-        <form method="post">
-            <input type="password" name="password" placeholder="Enter Password" required />
-            <button type="submit">Login</button>
-            <?php if (isset($error)) echo "<div class='error'>$error</div>"; ?>
-        </form>
-    </div>
-</body>
-</html>
-<?php
-exit;
-endif;
+  <div class="topbar">
+    <h1>📋 Visitor Logs</h1>
+    <a href="?logout=1">Logout</a>
+    <a href="export_csv.php">📥 Export CSV</a>
+    <a href="export_json.php">📥 Export JSON</a>
+    <a href="download_db.php">📥 Download DB</a>
+    <button onclick="toggleDarkMode()">🌓 Toggle Mode</button>
+  </div>
 
-// Show logs
-$db = new SQLite3('log.db');
-$results = $db->query("SELECT * FROM visitors ORDER BY id DESC");
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Admin Dashboard</title>
-    <style>
-        body {
-            background-color: #121212;
-            color: #fff;
-            font-family: 'Segoe UI', sans-serif;
-            padding: 20px;
-        }
-        h1 {
-            color: #03DAC6;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: #1e1e1e;
-        }
-        th, td {
-            border: 1px solid #333;
-            padding: 10px;
-            text-align: left;
-        }
-        th {
-            background: #272727;
-        }
-        tr:hover {
-            background: #2c2c2c;
-        }
-        .logout {
-            margin-top: 15px;
-            display: inline-block;
-            padding: 10px 20px;
-            background: crimson;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        .csv-btn {
-            margin-top: 10px;
-            padding: 10px 15px;
-            background: #03DAC6;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <h1>🛡️ Visitor Logs Dashboard</h1>
+  <canvas id="countryChart"></canvas>
 
-    <form method="post" action="export_csv.php">
-        <button type="submit" class="csv-btn">📥 Export CSV</button>
-    </form>
+  <h2>Latest Visitors</h2>
+  <pre id="logContent">Loading...</pre>
 
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Timestamp</th>
-                <th>IP</th>
-                <th>Country</th>
-                <th>City</th>
-                <th>Lat</th>
-                <th>Lon</th>
-                <th>Map Link</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php while ($row = $results->fetchArray()): ?>
-                <tr>
-                    <td><?= htmlspecialchars($row['id']) ?></td>
-                    <td><?= htmlspecialchars($row['timestamp']) ?></td>
-                    <td><?= htmlspecialchars($row['ip']) ?></td>
-                    <td><?= htmlspecialchars($row['country']) ?></td>
-                    <td><?= htmlspecialchars($row['city']) ?></td>
-                    <td><?= htmlspecialchars($row['latitude']) ?></td>
-                    <td><?= htmlspecialchars($row['longitude']) ?></td>
-                    <td><a href="<?= htmlspecialchars($row['maps_link']) ?>" target="_blank">🌍 View</a></td>
-                </tr>
-            <?php endwhile; ?>
-        </tbody>
-    </table>
+  <script>
+    function fetchLog() {
+      fetch('log.txt')
+        .then(res => res.text())
+        .then(data => {
+          document.getElementById('logContent').innerText = data || "No logs yet.";
+          renderChart(data);
+        });
+    }
 
-    <a href="logout.php" class="logout">🚪 Logout</a>
+    function renderChart(log) {
+      const countries = {};
+      log.split('\n').forEach(line => {
+        const match = line.match(/Country:\s(\w+)/);
+        if (match) {
+          const country = match[1];
+          countries[country] = (countries[country] || 0) + 1;
+        }
+      });
+
+      const ctx = document.getElementById('countryChart').getContext('2d');
+      if (window.chart) window.chart.destroy();
+      window.chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(countries),
+          datasets: [{
+            label: '# of Visits',
+            data: Object.values(countries),
+            backgroundColor: '#0f0'
+          }]
+        },
+        options: {
+          plugins: { legend: { display: false }},
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function toggleDarkMode() {
+      document.body.style.background = document.body.style.background === "white" ? "#111" : "white";
+      document.body.style.color = document.body.style.color === "black" ? "#eee" : "black";
+    }
+
+    fetchLog();
+    setInterval(fetchLog, 30000); // refresh every 30s
+  </script>
 </body>
 </html>
