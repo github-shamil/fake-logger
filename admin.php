@@ -1,134 +1,165 @@
 <?php
-// ====== CONFIG ======
-$password = "5121"; // 🔐 Set your password here
+$password = "yourpassword"; // Change to your secure password
 
-// ====== AUTH CHECK ======
 if (!isset($_GET['pass']) || $_GET['pass'] !== $password) {
-  die("Unauthorized access. Add ?pass=5121 to the URL.");
+  http_response_code(403);
+  die("Access Denied");
 }
 
-// ====== DATABASE ======
 $db = new SQLite3('log.db');
-$results = $db->query('SELECT * FROM visitors ORDER BY timestamp DESC');
 
-// ====== FILTER LOGIC ======
-$filter = strtolower($_GET['filter'] ?? '');
-function matchFilter($row, $filter) {
-  return !$filter || strpos(strtolower(json_encode($row)), $filter) !== false;
+// Handle Delete
+if (isset($_GET['delete']) && $_GET['pass'] === $password) {
+  $db->exec("DELETE FROM visitors");
+  header("Location: admin.php?pass=$password");
+  exit;
 }
+
+// Handle Export
+if (isset($_GET['export']) && $_GET['pass'] === $password) {
+  header('Content-Type: text/csv');
+  header('Content-Disposition: attachment; filename="visitor_logs.csv"');
+  $res = $db->query('SELECT * FROM visitors ORDER BY timestamp DESC');
+  echo "IP,Country,City,Town,Latitude,Longitude,Timestamp\n";
+  while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+    echo "{$row['ip']},{$row['country']},{$row['city']},{$row['town']},{$row['lat']},{$row['lon']},{$row['timestamp']}\n";
+  }
+  exit;
+}
+
+$results = $db->query('SELECT * FROM visitors ORDER BY timestamp DESC');
 ?>
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>Visitor Logs</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
-      font-family: system-ui, sans-serif;
-      background: #f2f2f2;
-      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      color: #222;
       padding: 20px;
+      transition: all 0.3s;
     }
     h2 {
-      margin-bottom: 10px;
-    }
-    input[type="text"] {
-      padding: 8px;
-      width: 100%;
-      max-width: 300px;
-      margin-bottom: 10px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      margin-bottom: 15px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       background: white;
-      font-size: 14px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
     th, td {
-      padding: 8px;
-      border: 1px solid #ddd;
-      word-break: break-word;
+      padding: 10px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      text-align: center;
     }
     th {
-      background: #007bff;
+      background: #007BFF;
       color: white;
-      position: sticky;
-      top: 0;
-      z-index: 2;
     }
-    tr:hover {
-      background: #f9f9f9;
+    .actions {
+      margin-bottom: 15px;
     }
-    .highlight {
-      background: #fff9c4;
+    .btn {
+      padding: 8px 15px;
+      margin-right: 10px;
+      background: #007BFF;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+      font-size: 14px;
     }
-    @media (max-width: 600px) {
-      table, thead, tbody, th, td, tr {
-        display: block;
-      }
-      thead tr {
-        display: none;
-      }
-      tr {
-        margin-bottom: 10px;
-        border: 1px solid #ccc;
-        background: white;
-        padding: 10px;
-      }
-      td {
-        display: flex;
-        justify-content: space-between;
-        padding: 8px 10px;
-        border: none;
-        border-bottom: 1px solid #eee;
-      }
-      td::before {
-        content: attr(data-label);
-        font-weight: bold;
-        color: #555;
-      }
+    .btn:hover {
+      background: #0056b3;
+    }
+    .dark-mode {
+      background: #121212;
+      color: #eee;
+    }
+    .dark-mode table {
+      background: #1e1e1e;
+    }
+    .dark-mode th {
+      background: #333;
+    }
+    .map-popup {
+      display: none;
+      position: fixed;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      height: 400px;
+      z-index: 9999;
+      border: 3px solid #007BFF;
+      background: white;
+    }
+    .close-map {
+      position: absolute;
+      top: -25px;
+      right: 0;
+      background: red;
+      color: white;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h2>📍 Visitor Tracker - Admin Logs</h2>
-  <form method="get">
-    <input type="hidden" name="pass" value="<?= htmlspecialchars($password) ?>">
-    <input type="text" name="filter" placeholder="🔍 Search IP, country, city..." value="<?= htmlspecialchars($filter) ?>" oninput="this.form.submit()">
-  </form>
+  <h2>🌍 Visitor Tracker - Admin Panel</h2>
+
+  <div class="actions">
+    <button class="btn" onclick="location.href='admin.php?pass=<?= $password ?>&export=true'">📤 Export CSV</button>
+    <button class="btn" onclick="if(confirm('Are you sure you want to delete all logs?'))location.href='admin.php?pass=<?= $password ?>&delete=true'">🗑️ Delete Logs</button>
+    <button class="btn" onclick="toggleDark()">🌓 Toggle Dark Mode</button>
+  </div>
 
   <table>
-    <thead>
-      <tr>
-        <th>IP</th>
-        <th>Country</th>
-        <th>City</th>
-        <th>Latitude</th>
-        <th>Longitude</th>
-        <th>Time</th>
-        <th>Map</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php while ($row = $results->fetchArray(SQLITE3_ASSOC)) {
-        if (!matchFilter($row, $filter)) continue;
-        ?>
-        <tr class="<?= $filter && stripos(json_encode($row), $filter) !== false ? 'highlight' : '' ?>">
-          <td data-label="IP"><?= htmlspecialchars($row['ip']) ?></td>
-          <td data-label="Country"><?= htmlspecialchars($row['country']) ?></td>
-          <td data-label="City"><?= htmlspecialchars($row['city']) ?></td>
-          <td data-label="Lat"><?= htmlspecialchars($row['lat']) ?></td>
-          <td data-label="Lon"><?= htmlspecialchars($row['lon']) ?></td>
-          <td data-label="Time"><?= htmlspecialchars($row['timestamp']) ?></td>
-          <td data-label="Map">
-            <a href="https://www.google.com/maps?q=<?= $row['lat'] ?>,<?= $row['lon'] ?>" target="_blank">🌍 View</a>
-          </td>
-        </tr>
-      <?php } ?>
-    </tbody>
+    <tr>
+      <th>IP</th>
+      <th>Country</th>
+      <th>City</th>
+      <th>Town</th>
+      <th>Latitude</th>
+      <th>Longitude</th>
+      <th>Timestamp</th>
+      <th>Map</th>
+    </tr>
+    <?php while ($row = $results->fetchArray()) { ?>
+    <tr>
+      <td><?= htmlspecialchars($row['ip']) ?></td>
+      <td><?= htmlspecialchars($row['country']) ?></td>
+      <td><?= htmlspecialchars($row['city']) ?></td>
+      <td><?= htmlspecialchars($row['town']) ?></td>
+      <td><?= $row['lat'] ?></td>
+      <td><?= $row['lon'] ?></td>
+      <td><?= $row['timestamp'] ?></td>
+      <td><a href="#" onclick="showMap(<?= $row['lat'] ?>, <?= $row['lon'] ?>)">📍 View</a></td>
+    </tr>
+    <?php } ?>
   </table>
+
+  <div class="map-popup" id="mapPopup">
+    <div class="close-map" onclick="document.getElementById('mapPopup').style.display='none'">✖</div>
+    <iframe id="mapFrame" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
+  </div>
+
+  <script>
+    function toggleDark() {
+      document.body.classList.toggle("dark-mode");
+    }
+
+    function showMap(lat, lon) {
+      const frame = document.getElementById('mapFrame');
+      frame.src = `https://maps.google.com/maps?q=${lat},${lon}&z=15&output=embed`;
+      document.getElementById('mapPopup').style.display = 'block';
+    }
+  </script>
 </body>
 </html>
