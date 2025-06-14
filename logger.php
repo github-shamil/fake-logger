@@ -2,8 +2,8 @@
 
 $DB_FILE = 'log.db';
 $TXT_FILE = 'log.txt';
-$TELEGRAM_BOT_TOKEN = ''; // Optional
-$TELEGRAM_CHAT_ID = '';   // Optional
+$TELEGRAM_BOT_TOKEN = '7943375930:AAEiifo4A9NiuxY13o73qjCJVUiHXEu2ta8'; // Optional
+$TELEGRAM_CHAT_ID = '6602027873';   // Optional
 // === Get Visitor IP ===
 function get_client_ip() {
     if (!empty($_SERVER['HTTP_CLIENT_IP'])) return $_SERVER['HTTP_CLIENT_IP'];
