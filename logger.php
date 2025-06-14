@@ -20,7 +20,7 @@ if ($geo['status'] !== 'success') {
 $country = $geo['country'] ?? '';
 $region  = $geo['regionName'] ?? '';
 $city    = $geo['city'] ?? '';
-$town    = $geo['district'] ?? ''; // May contain town/village (like Narath)
+$town    = $geo['district'] ?? ''; // Narath, etc.
 $lat     = $geo['lat'] ?? '';
 $lon     = $geo['lon'] ?? '';
 $ip      = $geo['query'] ?? $ip;
