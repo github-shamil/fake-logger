@@ -1,5 +1,5 @@
 <?php
-$password = "yourpassword"; // Change to your secure password
+$password = "8590"; // Change to your secure password
 
 if (!isset($_GET['pass']) || $_GET['pass'] !== $password) {
   http_response_code(403);
