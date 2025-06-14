@@ -1,71 +1,89 @@
 <?php
 // === CONFIG ===
-$DB_FILE = 'log.db';
-$PASSWORD = '5121';
-$PER_PAGE = 20;
+$correct_pass = "5121"; // change to your real password
+$db_file = "log.db";
+$per_page = 20;
 
-// === AUTH CHECK ===
-if (!isset($_GET['pass']) || $_GET['pass'] !== $PASSWORD) {
-    die("<h2>Access Denied ❌</h2><p>Provide ?pass=yourpassword in the URL.</p>");
+// === Password Protection ===
+if (!isset($_GET['pass']) || $_GET['pass'] !== $correct_pass) {
+  http_response_code(403);
+  echo "Access denied";
+  exit;
 }
 
-$db = new SQLite3($DB_FILE);
-$db->exec("CREATE TABLE IF NOT EXISTS visitors (
-    id INTEGER PRIMARY KEY,
-    ip TEXT, country TEXT, region TEXT,
-    city TEXT, town TEXT,
-    lat TEXT, lon TEXT, timestamp TEXT
-)");
+// === Connect to SQLite ===
+$db = new SQLite3($db_file);
 
-// === FILTERING ===
-$filter = [
-  'ip' => $_GET['ip'] ?? '',
-  'city' => $_GET['city'] ?? '',
-  'town' => $_GET['town'] ?? '',
-  'date' => $_GET['date'] ?? '',
-];
+// === Filters ===
+$where = "WHERE 1=1";
+$params = [];
 
-$where = [];
-foreach ($filter as $key => $val) {
-  if ($val) $where[] = "$key LIKE '%" . SQLite3::escapeString($val) . "%'";
+if (!empty($_GET['ip'])) {
+  $where .= " AND ip LIKE :ip";
+  $params[':ip'] = "%" . $_GET['ip'] . "%";
 }
-$whereClause = $where ? "WHERE " . implode(" AND ", $where) : "";
 
-// === PAGINATION ===
-$page = max(1, intval($_GET['page'] ?? 1));
-$offset = ($page - 1) * $PER_PAGE;
+if (!empty($_GET['city'])) {
+  $where .= " AND city LIKE :city";
+  $params[':city'] = "%" . $_GET['city'] . "%";
+}
 
-$total = $db->querySingle("SELECT COUNT(*) FROM visitors $whereClause");
-$results = $db->query("SELECT * FROM visitors $whereClause ORDER BY timestamp DESC LIMIT $PER_PAGE OFFSET $offset");
+if (!empty($_GET['town'])) {
+  $where .= " AND town LIKE :town";
+  $params[':town'] = "%" . $_GET['town'] . "%";
+}
 
+if (!empty($_GET['date'])) {
+  $where .= " AND DATE(timestamp) = :date";
+  $params[':date'] = $_GET['date'];
+}
+
+// === Pagination ===
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page - 1) * $per_page;
+
+// === Count Total Entries ===
+$count_stmt = $db->prepare("SELECT COUNT(*) as total FROM visitors $where");
+foreach ($params as $key => $val) {
+  $count_stmt->bindValue($key, $val, SQLITE3_TEXT);
+}
+$total = $count_stmt->execute()->fetchArray(SQLITE3_ASSOC)['total'];
+$pages = ceil($total / $per_page);
+
+// === Fetch Logs ===
+$stmt = $db->prepare("SELECT * FROM visitors $where ORDER BY timestamp DESC LIMIT $per_page OFFSET $offset");
+foreach ($params as $key => $val) {
+  $stmt->bindValue($key, $val, SQLITE3_TEXT);
+}
+$results = $stmt->execute();
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Visitor Log Admin</title>
+  <title>Visitor Log Viewer</title>
   <style>
-    body { font-family: Arial; background: #f0f2f5; padding: 20px; }
-    h2 { margin-bottom: 10px; }
-    form input { padding: 6px; margin-right: 5px; }
-    table { width: 100%; border-collapse: collapse; background: white; }
-    th, td { padding: 8px 10px; border: 1px solid #ccc; font-size: 13px; }
-    th { background: #333; color: white; }
-    a.map { color: blue; text-decoration: underline; }
-    .pagination a { padding: 4px 8px; background: #007BFF; color: white; margin: 2px; text-decoration: none; border-radius: 4px; }
-    .pagination { margin-top: 10px; }
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    h2 { margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; background: white; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; font-size: 14px; text-align: left; }
+    th { background-color: #007BFF; color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    form input { padding: 5px 10px; margin-right: 10px; }
+    .pagination { margin-top: 15px; }
+    .pagination a { padding: 5px 10px; background: #007BFF; color: white; text-decoration: none; margin-right: 5px; border-radius: 3px; }
+    .pagination span { padding: 5px 10px; }
   </style>
 </head>
 <body>
-  <h2>🧭 Visitor Logs</h2>
+  <h2>Visitor Tracker - Log Viewer</h2>
 
-  <form method="GET">
-    <input type="hidden" name="pass" value="<?= htmlspecialchars($PASSWORD) ?>">
-    <input name="ip" placeholder="IP" value="<?= htmlspecialchars($filter['ip']) ?>">
-    <input name="city" placeholder="City" value="<?= htmlspecialchars($filter['city']) ?>">
-    <input name="town" placeholder="Town" value="<?= htmlspecialchars($filter['town']) ?>">
-    <input name="date" placeholder="YYYY-MM-DD" value="<?= htmlspecialchars($filter['date']) ?>">
-    <button type="submit">Search</button>
-    <a href="?pass=<?= htmlspecialchars($PASSWORD) ?>">Reset</a>
+  <form method="get">
+    <input type="hidden" name="pass" value="<?= htmlspecialchars($correct_pass) ?>">
+    <input type="text" name="ip" placeholder="IP" value="<?= htmlspecialchars($_GET['ip'] ?? '') ?>">
+    <input type="text" name="city" placeholder="City" value="<?= htmlspecialchars($_GET['city'] ?? '') ?>">
+    <input type="text" name="town" placeholder="Town" value="<?= htmlspecialchars($_GET['town'] ?? '') ?>">
+    <input type="date" name="date" value="<?= htmlspecialchars($_GET['date'] ?? '') ?>">
+    <input type="submit" value="Filter">
   </form>
 
   <table>
@@ -75,32 +93,37 @@ $results = $db->query("SELECT * FROM visitors $whereClause ORDER BY timestamp DE
       <th>Region</th>
       <th>City</th>
       <th>Town</th>
-      <th>Lat</th>
-      <th>Lon</th>
+      <th>Latitude</th>
+      <th>Longitude</th>
       <th>Time</th>
       <th>Map</th>
     </tr>
-    <?php while ($row = $results->fetchArray()) { ?>
-    <tr>
-      <td><?= htmlspecialchars($row['ip']) ?></td>
-      <td><?= htmlspecialchars($row['country']) ?></td>
-      <td><?= htmlspecialchars($row['region']) ?></td>
-      <td><?= htmlspecialchars($row['city']) ?></td>
-      <td><?= htmlspecialchars($row['town']) ?></td>
-      <td><?= htmlspecialchars($row['lat']) ?></td>
-      <td><?= htmlspecialchars($row['lon']) ?></td>
-      <td><?= htmlspecialchars($row['timestamp']) ?></td>
-      <td><a class="map" target="_blank" href="https://www.google.com/maps?q=<?= $row['lat'] ?>,<?= $row['lon'] ?>">View</a></td>
-    </tr>
+    <?php while ($row = $results->fetchArray(SQLITE3_ASSOC)) { ?>
+      <tr>
+        <td><?= htmlspecialchars($row['ip']) ?></td>
+        <td><?= htmlspecialchars($row['country']) ?></td>
+        <td><?= htmlspecialchars($row['region']) ?></td>
+        <td><?= htmlspecialchars($row['city']) ?></td>
+        <td><?= htmlspecialchars($row['town'] ?? '') ?></td>
+        <td><?= htmlspecialchars($row['lat']) ?></td>
+        <td><?= htmlspecialchars($row['lon']) ?></td>
+        <td><?= htmlspecialchars($row['timestamp']) ?></td>
+        <td>
+          <a href="https://www.google.com/maps?q=<?= $row['lat'] ?>,<?= $row['lon'] ?>" target="_blank">View</a>
+        </td>
+      </tr>
     <?php } ?>
   </table>
 
   <div class="pagination">
-    <?php for ($i = 1; $i <= ceil($total / $PER_PAGE); $i++): ?>
-      <a href="?pass=<?= $PASSWORD ?>&page=<?= $i ?><?= $filter['ip'] ? "&ip=" . urlencode($filter['ip']) : "" ?><?= $filter['city'] ? "&city=" . urlencode($filter['city']) : "" ?><?= $filter['town'] ? "&town=" . urlencode($filter['town']) : "" ?><?= $filter['date'] ? "&date=" . urlencode($filter['date']) : "" ?>">
-        <?= $i ?>
-      </a>
-    <?php endfor; ?>
+    <?php for ($i = 1; $i <= $pages; $i++) {
+      $url = $_GET;
+      $url['page'] = $i;
+      $query = http_build_query($url);
+      echo $i == $page
+        ? "<span><b>$i</b></span>"
+        : "<a href=\"?$query\">$i</a>";
+    } ?>
   </div>
 </body>
 </html>
